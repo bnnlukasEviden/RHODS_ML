@@ -122,6 +122,8 @@ oil_pipeline = Pipeline(stages=[numerical_imputer, assembler, rfr_oil]) # pipeli
 
 param_grid = ParamGridBuilder() \
     .addGrid(rfr_oil.maxDepth, [5,7]) \
+    .addGrid(rfr_oil.numTrees, [10, 20, 30]) \
+    .addGrid(rfr_oil.maxDepth, [5, 10, 15]) \
     .build()
 
 evaluator = RegressionEvaluator(labelCol="dcoilwtico", predictionCol="prediction", metricName="mae")
