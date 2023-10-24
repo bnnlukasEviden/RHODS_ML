@@ -209,9 +209,9 @@ pipeline_fb = Pipeline(stages= indexers_fb + encoders_fb + [assembler_fb, gbt_fb
 
 # Hyperparameter Tuning
 paramGrid_fb = (ParamGridBuilder()
-             .addGrid(gbt_fb.maxDepth, [6])
-             .addGrid(gbt_fb.maxIter, [100])
-             .addGrid(gbt_fb.stepSize, [0.01])
+             .addGrid(gbt_fb.maxDepth, [4, 6])
+             .addGrid(gbt_fb.maxIter, [50, 100])
+             .addGrid(gbt_fb.stepSize, [0.1, 0.01])
              .build())
 
 evaluator_fb = RegressionEvaluator(labelCol="sales", predictionCol="prediction", metricName="mae")
