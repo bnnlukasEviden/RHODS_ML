@@ -1,0 +1,25 @@
+apiVersion: spark.stackable.tech/v1alpha1
+kind: SparkApplication
+metadata:
+  name: pyspark-pi
+  namespace: default
+spec:
+  version: "1.0"
+  sparkImage: image-registry.openshift-image-registry.svc:5000/sales-challenge/pyspark:latest
+  mode: cluster
+  mainApplicationFile: local:///stackable/spark/main_spark.py
+  driver:
+    resources:
+      cpu:
+        min: "1"
+        max: "2"
+      memory:
+        limit: "1Gi"
+  executor:
+    instances: 1
+    resources:
+      cpu:
+        min: "1"
+        max: "2"
+      memory:
+        limit: "1Gi"
