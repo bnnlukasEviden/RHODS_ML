@@ -1,7 +1,5 @@
 # Imports
 
-
-
 import pyspark
 from pyspark.sql import SparkSession
 from pyspark.ml.feature import VectorAssembler
@@ -19,22 +17,21 @@ from pyspark.sql.functions import expr
 from pyspark.sql import Row
 from pyspark.sql.types import DateType
 
+from onnxmltools import convert_sparkml
+from onnxmltools.convert.sparkml.utils import buildInitialTypesSimple
 
-
+'''
+SPARK
+'''
 
 spark = SparkSession.builder.appName('RHODS').getOrCreate()
-
-
-
 
 spark.catalog.clearCache()
 spark.conf.set("spark.sql.autoBroadcastJoinThreshold", 1024 * 1024 * 1024)
 
-
 '''
 DATA EXTRACTION
 '''
-
 
 main_df = spark.read.csv('train.csv', header = True, inferSchema = True)
 oil_df = spark.read.csv('oil.csv', header = True, inferSchema = True)
@@ -98,7 +95,6 @@ encoder = OneHotEncoder(inputCols=categorical_cols,
 oil_forecast_encoded_df = encoder.fit(oil_forecast_df).transform(oil_forecast_df)
 
 
-
 # Create the train set of data with oil prices
 oil_fc_train = oil_forecast_encoded_df.filter(oil_forecast_encoded_df['dcoilwtico'].isNotNull())
 # Create the prediction set of data without oil prices
@@ -122,6 +118,8 @@ oil_pipeline = Pipeline(stages=[numerical_imputer, assembler, rfr_oil]) # pipeli
 
 param_grid = ParamGridBuilder() \
     .addGrid(rfr_oil.maxDepth, [5,7]) \
+    .addGrid(rfr_oil.numTrees, [10, 20, 30]) \
+    .addGrid(rfr_oil.maxDepth, [5, 10, 15]) \
     .build()
 
 evaluator = RegressionEvaluator(labelCol="dcoilwtico", predictionCol="prediction", metricName="mae")
@@ -185,47 +183,49 @@ FEATURE-BASED (without time lags)
 
 # ## Data transformation/encoding
 transformed_df_fb = merged_df
+
+transformed_df_fb = transformed_df_fb.drop("date")
+
 transformed_df_fb = transformed_df_fb.withColumnRenamed("day_of_week", "day_of_week_index")
 transformed_df_fb = transformed_df_fb.withColumnRenamed("month", "month_index")
+transformed_df_fb = transformed_df_fb.sample(withReplacement=False, fraction=0.05)
 
 str_cat_cols_fb = ["type", "family"]
 cat_cols_fb = ["day_of_week", "month", "type", "family"]
 
-indexers = [StringIndexer(inputCol=col, outputCol=col+"_index") for col in str_cat_cols_fb]
-encoders = [OneHotEncoder(inputCol=col + "_index", outputCol=col + "_encoded") for col in cat_cols_fb]
+indexers_fb = [StringIndexer(inputCol=col, outputCol=col+"_index") for col in str_cat_cols_fb]
+encoders_fb = [OneHotEncoder(inputCol=col + "_index", outputCol=col + "_encoded") for col in cat_cols_fb]
 
-pipeline = Pipeline(stages=indexers + encoders)
-model = pipeline.fit(transformed_df_fb)
-data = model.transform(transformed_df_fb)
-data.sort(col("date"), col('family')).show(truncate = False)
+for encoder in encoders_fb:
+    encoder.setHandleInvalid("keep")
+    encoder.setDropLast(True)
 
+feature_cols_fb = ["day_of_week_encoded", "month_encoded", "type_encoded", "family_encoded", "transactions", "dcoilwtico", "onpromotion"]
 
 ##### MODEL TRAINING #####
 
-feature_cols = ["day_of_week_encoded", "month_encoded", "type_encoded", "family_encoded", "transactions", "dcoilwtico", "onpromotion"]
-assembler = VectorAssembler(inputCols=feature_cols, outputCol="features")
-gbt = GBTRegressor(featuresCol="features", labelCol="sales", maxBins=33) # Gradient Boosting Regressor
-pipeline = Pipeline(stages=[assembler, gbt])
+assembler_fb = VectorAssembler(inputCols=feature_cols_fb, outputCol="features")
 
+gbt_fb = GBTRegressor(featuresCol="features", labelCol="sales", maxBins=33)
+
+pipeline_fb = Pipeline(stages= indexers_fb + encoders_fb + [assembler, gbt_fb])
 
 # Hyperparameter Tuning
-paramGrid = (ParamGridBuilder()
-             .addGrid(gbt.maxDepth, [4, 6])
-             .addGrid(gbt.maxIter, [50, 100])
-             .addGrid(gbt.stepSize, [0.1, 0.01])
+paramGrid_fb = (ParamGridBuilder()
+             .addGrid(gbt_fb.maxDepth, [6])
+             .addGrid(gbt_fb.maxIter, [100])
+             .addGrid(gbt_fb.stepSize, [0.01])
              .build())
 
+evaluator_fb = RegressionEvaluator(labelCol="sales", predictionCol="prediction", metricName="mae")
 
-evaluator = RegressionEvaluator(labelCol="sales", predictionCol="prediction", metricName="mae")
-
-crossval = CrossValidator(estimator=pipeline,
-                          estimatorParamMaps=paramGrid,
-                          evaluator=evaluator,
+crossval_fb = CrossValidator(estimator=pipeline_fb,
+                          estimatorParamMaps=paramGrid_fb,
+                          evaluator=evaluator_fb,
                           numFolds=2)
 
-train_data, test_data = data.randomSplit([0.8, 0.2], seed=12)
-cvModel = crossval.fit(train_data)
-
+train_data_fb, test_data_fb = transformed_df_fb.randomSplit([0.8, 0.2], seed=12)
+cvModel_fb = crossval_fb.fit(train_data_fb)
 
 '''
 MODEL EVALUATION 
@@ -235,33 +235,21 @@ without time lags
 #  Overall evaluation
 
 
-evaluation_fb_df = cvModel.transform(test_data)
+evaluation_fb_df = cvModel_fb.transform(test_data_fb)
 clipped_evaluation_fb_df = evaluation_fb_df.withColumn("clipped_predictions", when(col("prediction") < 0, 0).otherwise(col("prediction")))
 
-mae = evaluator.evaluate(clipped_evaluation_fb_df)
+mae_fb = evaluator_fb.evaluate(clipped_evaluation_fb_df)
 
-best_model = cvModel.bestModel
+best_model_fb = cvModel_fb.bestModel
 
-print("Mean Absolute Error (MAE):", mae)
+initial_types_fb = buildInitialTypesSimple(test_data_fb.drop("sales"))
+onnx_model_fb = convert_sparkml(best_model_fb, 'Pyspark model without time lags', initial_types_fb, spark_session = spark)
 
+#-------------------------------------------------------------------------------------------------------------------------------
 
-
-#  Product family wise evaluation
-
-filtered_evaluation_fb_df = clipped_evaluation_fb_df.select("family", "sales", "clipped_predictions")
-evaluator = RegressionEvaluator(labelCol="sales", predictionCol="clipped_predictions", metricName="mae")
-unique_family_values = filtered_evaluation_fb_df.select("family").distinct().rdd.flatMap(lambda x: x).collect()
-
-data = []
-for value in unique_family_values:
-  df_fb = filtered_evaluation_fb_df.filter(filtered_evaluation_fb_df['family'] == value)
-  mae_fb = evaluator.evaluate(df_fb)
-  mean_fb = df_fb.select(mean("sales")).collect()[0][0]
-  row = Row(family=value, mean=mean_fb, mean_absolute_error=mae_fb)
-  data.append(row)
-
-family_evaluation_fb_df = spark.createDataFrame(data)
-
+'''
+FEATURE-BASED WITH TIME LAG
+'''
 
 tl_df = merged_df # creating plain df for time-lagged data frame
 
@@ -288,43 +276,38 @@ transformed_df_tl = transformed_df_tl.withColumnRenamed("month", "month_index")
 str_cat_cols_tl = ["type", "family"]
 cat_cols_tl = ["day_of_week", "month", "type", "family"]
 
-indexers = [StringIndexer(inputCol=col, outputCol=col+"_index") for col in str_cat_cols_tl]
-encoders = [OneHotEncoder(inputCol=col + "_index", outputCol=col + "_encoded") for col in cat_cols_tl]
+indexers_tl = [StringIndexer(inputCol=col, outputCol=col+"_index") for col in str_cat_cols_tl]
+encoders_tl = [OneHotEncoder(inputCol=col + "_index", outputCol=col + "_encoded") for col in cat_cols_tl]
 
-pipeline = Pipeline(stages=indexers + encoders)
-model = pipeline.fit(transformed_df_tl)
-data = model.transform(transformed_df_tl)
-data.sort(col("date"), col('family')).show(truncate = False)
-#-------------------------------------------------------------------------------------------------------------------------------
+for encoder in encoders_tl:
+    encoder.setHandleInvalid("keep")
+    encoder.setDropLast(True)
 
-'''
-TIME-LAG MODEL
-'''
+##### MODEL TRAINING #####
 
+feature_cols_tl = ["day_of_week_encoded", "month_encoded", "type_encoded", "family_encoded", "transactions", "dcoilwtico", "onpromotion", "lag_1", "lag_2", "lag_3"]
 
-feature_cols = ["day_of_week_encoded", "month_encoded", "type_encoded", "family_encoded", "transactions", "dcoilwtico", "onpromotion", "lag_1", "lag_2", "lag_3"]
+assembler_tl = VectorAssembler(inputCols=feature_cols_tl, outputCol="features")
 
-assembler = VectorAssembler(inputCols=feature_cols, outputCol="features")
+gbt_tl = GBTRegressor(featuresCol="features", labelCol="sales", maxBins=33)
 
-gbt = GBTRegressor(featuresCol="features", labelCol="sales", maxBins=33)
+pipeline_tl = Pipeline(stages= indexers_tl + encoders_tl + [assembler, gbt_tl])
 
-pipeline = Pipeline(stages=[assembler, gbt])
-
-paramGrid = (ParamGridBuilder()
-             .addGrid(gbt.maxDepth, [4, 6])
-             .addGrid(gbt.maxIter, [50, 100])
-             .addGrid(gbt.stepSize, [0.1, 0.01])
+paramGrid_tl = (ParamGridBuilder()
+             .addGrid(gbt_tl.maxDepth, [4, 6])
+             .addGrid(gbt_tl.maxIter, [50, 100])
+             .addGrid(gbt_tl.stepSize, [0.1, 0.01])
              .build())
 
-evaluator = RegressionEvaluator(labelCol="sales", predictionCol="prediction", metricName="mae")
+evaluator_tl = RegressionEvaluator(labelCol="sales", predictionCol="prediction", metricName="mae")
 
-crossval = CrossValidator(estimator=pipeline,
-                          estimatorParamMaps=paramGrid,
-                          evaluator=evaluator,
+crossval_tl = CrossValidator(estimator=pipeline_tl,
+                          estimatorParamMaps=paramGrid_tl,
+                          evaluator=evaluator_tl,
                           numFolds=2)
 
-train_data, test_data = data.randomSplit([0.8, 0.2], seed=12)
-cvModel = crossval.fit(train_data)
+train_data_tl, test_data_tl = transformed_df_tl.randomSplit([0.8, 0.2], seed=12)
+cvModel_tl = crossval.fit(train_data_tl)
 
 
 '''
@@ -332,36 +315,16 @@ EVALUATION
 time-lagged model
 '''
 
-# Overall evaluation
-
-
-evaluation_tl_df = cvModel.transform(test_data)
+evaluation_tl_df = cvModel_tl.transform(test_data_tl)
 clipped_evaluation_tl_df = evaluation_tl_df.withColumn("clipped_predictions", when(col("prediction") < 0, 0).otherwise(col("prediction")))
 
-mae_tl = evaluator.evaluate(evaluation_tl_df)
+mae_tl = evaluator_tl.evaluate(evaluation_tl_df)
 
-best_model_tl = cvModel.bestModel
+best_model_tl = cvModel_tl.bestModel
 
-print("Mean Absolute Error (MAE):", mae_tl)
+initial_types_tl = buildInitialTypesSimple(test_data_tl.drop("sales"))
+onnx_model_tl = convert_sparkml(best_model_tl, 'Pyspark model with time lags', initial_types_tl, spark_session = spark)
 
-
-
-
-# ### Product family wise evaluation
-
-
-filtered_evaluation_fb_df = clipped_evaluation_tl_df.select("family", "sales", "clipped_predictions")
-evaluator = RegressionEvaluator(labelCol="sales", predictionCol="clipped_predictions", metricName="mae")
-unique_family_values = filtered_evaluation_fb_df.select("family").distinct().rdd.flatMap(lambda x: x).collect()
-
-data = []
-for value in unique_family_values:
-  df_fb = filtered_evaluation_fb_df.filter(filtered_evaluation_fb_df['family'] == value)
-  mae_fb = evaluator.evaluate(df_fb)
-  mean_fb = df_fb.select(mean("sales")).collect()[0][0]
-  row = Row(family=value, mean=mean_fb, mean_absolute_error=mae_fb)
-  data.append(row)
-
-family_evaluation_fb_df = spark.createDataFrame(data)
 #-------------------------------------------------------------------------------------------------------------------------------
 
+spark.stop()
