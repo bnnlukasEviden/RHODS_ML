@@ -307,7 +307,7 @@ crossval_tl = CrossValidator(estimator=pipeline_tl,
                           numFolds=2)
 
 train_data_tl, test_data_tl = transformed_df_tl.randomSplit([0.8, 0.2], seed=12)
-cvModel_tl = crossval.fit(train_data_tl)
+cvModel_tl = crossval_tl.fit(train_data_tl)
 
 
 '''
