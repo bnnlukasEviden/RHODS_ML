@@ -1,5 +1,5 @@
-# Imports
-
+# Dependencies
+# final script
 import pyspark
 from pyspark.sql import SparkSession
 from pyspark.ml.feature import VectorAssembler
@@ -59,9 +59,7 @@ agg_df = agg_df.withColumn('day_of_week', dayofweek(agg_df.date)).withColumn('mo
 agg_oil_merge_df = agg_df.join(oil_df, on='date', how='left') # left join agg_df and oil_df
 agg_oil_merge_df = agg_oil_merge_df.dropDuplicates(['date']) # reduce df to one row per date
 
-# Calculate the percentage of NaN values in the 'dcoilwtico' column
-percentage_nan = (agg_oil_merge_df.filter(col("dcoilwtico").isNull()).count() / agg_oil_merge_df.count()) * 100
-print(f'Procentual number of NaN-Values: {percentage_nan}%')
+
 
 
 # --> Due to the high number of NaN-Values regarding the oilprice-value we decided to do a oilprice forecast
@@ -85,14 +83,14 @@ oil_forecast_df = oil_forecast_df.withColumn("dcoilwtico", oil_forecast_df["dcoi
 
 # Data transformation/encoding/split, Pipeline creation
 
-numerical_cols = ['lag_1', 'lag_2', 'lag_3', 'lag_4', 'lag_5']
-categorical_cols = ['day_of_week', 'month']
+numerical_cols_oil = ['lag_1', 'lag_2', 'lag_3', 'lag_4', 'lag_5']
+categorical_cols_oil = ['day_of_week', 'month']
 
 # Defining the encoder for encoding the categorical values
-encoder = OneHotEncoder(inputCols=categorical_cols,
-                        outputCols=[f"{col}_encoded" for col in categorical_cols])
+encoder_oil = OneHotEncoder(inputCols=categorical_cols_oil,
+                        outputCols=[f"{col}_encoded" for col in categorical_cols_oil])
 
-oil_forecast_encoded_df = encoder.fit(oil_forecast_df).transform(oil_forecast_df)
+oil_forecast_encoded_df = encoder_oil.fit(oil_forecast_df).transform(oil_forecast_df)
 
 
 # Create the train set of data with oil prices
@@ -102,34 +100,34 @@ oil_fc_pred = oil_forecast_encoded_df.filter(oil_forecast_encoded_df['dcoilwtico
 
 
 # Set the imputer
-numerical_imputer = Imputer(strategy="median", inputCols=numerical_cols, outputCols=[f"{col}_imputed" for col in numerical_cols])
+numerical_imputer_oil = Imputer(strategy="median", inputCols=numerical_cols_oil, outputCols=[f"{col}_imputed" for col in numerical_cols_oil])
 
 # Assemble features into a single vector
-feature_cols = [f"{col}_imputed" for col in numerical_cols] + [f"{col}_encoded" for col in categorical_cols]
-assembler = VectorAssembler(inputCols=feature_cols,outputCol="features")
+feature_cols_oil = [f"{col}_imputed" for col in numerical_cols_oil] + [f"{col}_encoded" for col in categorical_cols_oil]
+assembler_oil = VectorAssembler(inputCols=feature_cols_oil ,outputCol="features")
 
 # Initialise the oilprice prediction model
 rfr_oil = RandomForestRegressor(featuresCol='features', labelCol='dcoilwtico')
 
 # Create the data preprocessing pipeline
-oil_pipeline = Pipeline(stages=[numerical_imputer, assembler, rfr_oil]) # pipeline for cross validation
+pipeline_oil = Pipeline(stages=[numerical_imputer_oil, assembler_oil, rfr_oil]) # pipeline for cross validation
 
 ##### MODEL TRAINING #####
 
-param_grid = ParamGridBuilder() \
+paramGrid_oil = ParamGridBuilder() \
     .addGrid(rfr_oil.maxDepth, [5,7]) \
     .addGrid(rfr_oil.numTrees, [10, 20, 30]) \
     .addGrid(rfr_oil.maxDepth, [5, 10, 15]) \
     .build()
 
-evaluator = RegressionEvaluator(labelCol="dcoilwtico", predictionCol="prediction", metricName="mae")
+evaluator_oil = RegressionEvaluator(labelCol="dcoilwtico", predictionCol="prediction", metricName="mae")
 
-crossval = CrossValidator(estimator=oil_pipeline,
-                          estimatorParamMaps=param_grid,
-                          evaluator=evaluator,
+crossval_oil = CrossValidator(estimator=pipeline_oil,
+                          estimatorParamMaps=paramGrid_oil,
+                          evaluator=evaluator_oil,
                           numFolds=5)
 
-cv_model_oil = crossval.fit(oil_fc_train)
+cv_model_oil = crossval_oil.fit(oil_fc_train)
 
 best_model_oil = cv_model_oil.bestModel # Model with the best parameters
 
@@ -160,15 +158,14 @@ merged_df = merged_df.na.drop()
 # We only want to use the Holiday/Additional,etc. data which counts for the whole country Ecuador
 modified_holidays_df = holidays_df.filter((col("transferred") == False) & (col("locale") == "National"))
 modified_holidays_df = modified_holidays_df.withColumn("type", when(col("type") == "Transfer", "Holiday").otherwise(col("type")))
-
 modified_holidays_df = modified_holidays_df.select("date", "type")
-modified_holidays_df.sort(col("date")).show(truncate = False)
 
 # Doing the merge of modified_holidays_df and merged_df
 merged_df = merged_df.join(modified_holidays_df, on="date", how="left")
 # The dates on which no holiday or something else encounted in the holiday_df takes place we insert "Normal" as a value
 merged_df = merged_df.withColumn("type", when(merged_df["type"].isNull(), "Normal").otherwise(merged_df["type"]))
-merged_df.sort(col("date"), col('family')).show(truncate = False)
+
+
 #-------------------------------------------------------------------------------------------------------------------------------
 
 '''
@@ -208,7 +205,7 @@ assembler_fb = VectorAssembler(inputCols=feature_cols_fb, outputCol="features")
 
 gbt_fb = GBTRegressor(featuresCol="features", labelCol="sales", maxBins=33)
 
-pipeline_fb = Pipeline(stages= indexers_fb + encoders_fb + [assembler, gbt_fb])
+pipeline_fb = Pipeline(stages= indexers_fb + encoders_fb + [assembler_fb, gbt_fb])
 
 # Hyperparameter Tuning
 paramGrid_fb = (ParamGridBuilder()
@@ -240,11 +237,11 @@ clipped_evaluation_fb_df = evaluation_fb_df.withColumn("clipped_predictions", wh
 
 mae_fb = evaluator_fb.evaluate(clipped_evaluation_fb_df)
 
+
 best_model_fb = cvModel_fb.bestModel
 
 initial_types_fb = buildInitialTypesSimple(test_data_fb.drop("sales"))
 onnx_model_fb = convert_sparkml(best_model_fb, 'Pyspark model without time lags', initial_types_fb, spark_session = spark)
-
 #-------------------------------------------------------------------------------------------------------------------------------
 
 '''
@@ -255,7 +252,7 @@ tl_df = merged_df # creating plain df for time-lagged data frame
 
 window_spec = Window.partitionBy("family").orderBy("date")
 
-# adding lags
+# adding lags 
 tl_df = tl_df.withColumn("lag_1", F.lag("sales", 1).over(window_spec))
 tl_df = tl_df.withColumn("lag_2", F.lag("sales", 2).over(window_spec))
 tl_df = tl_df.withColumn("lag_3", F.lag("sales", 3).over(window_spec))
@@ -291,7 +288,7 @@ assembler_tl = VectorAssembler(inputCols=feature_cols_tl, outputCol="features")
 
 gbt_tl = GBTRegressor(featuresCol="features", labelCol="sales", maxBins=33)
 
-pipeline_tl = Pipeline(stages= indexers_tl + encoders_tl + [assembler, gbt_tl])
+pipeline_tl = Pipeline(stages= indexers_tl + encoders_tl + [assembler_tl, gbt_tl])
 
 paramGrid_tl = (ParamGridBuilder()
              .addGrid(gbt_tl.maxDepth, [4, 6])
@@ -322,9 +319,8 @@ mae_tl = evaluator_tl.evaluate(evaluation_tl_df)
 
 best_model_tl = cvModel_tl.bestModel
 
-initial_types_tl = buildInitialTypesSimple(test_data_tl.drop("sales"))
+initial_types_tl = buildInitialTypesSimple(test_data_tl.drop("sales", 'date'))
 onnx_model_tl = convert_sparkml(best_model_tl, 'Pyspark model with time lags', initial_types_tl, spark_session = spark)
-
 #-------------------------------------------------------------------------------------------------------------------------------
 
 spark.stop()
