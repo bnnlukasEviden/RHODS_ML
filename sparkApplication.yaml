@@ -11,8 +11,8 @@ spec:
   driver:
     resources:
       cpu:
-        min: "1"
-        max: "2"
+        min: "6"
+        max: "6"
       memory:
         limit: "8Gi"
   executor:
