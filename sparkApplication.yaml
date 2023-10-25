@@ -14,7 +14,7 @@ spec:
         min: "1"
         max: "2"
       memory:
-        limit: "1Gi"
+        limit: "4Gi"
   executor:
     instances: 1
     resources:
