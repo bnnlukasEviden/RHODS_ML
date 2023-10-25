@@ -75,6 +75,7 @@ oil_df = Data['oil']
 holidays_df = Data['holidays_events']
 transactions_df = Data['transactions']
 
+print('data loaded')
 #-------------------------------------------------------------------------------------------------------------------------------
 
 '''
@@ -203,7 +204,7 @@ merged_df = merged_df.join(modified_holidays_df, on="date", how="left")
 # The dates on which no holiday or something else encounted in the holiday_df takes place we insert "Normal" as a value
 merged_df = merged_df.withColumn("type", when(merged_df["type"].isNull(), "Normal").otherwise(merged_df["type"]))
 
-
+print('oil forecasting done')
 #-------------------------------------------------------------------------------------------------------------------------------
 
 '''
