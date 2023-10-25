@@ -2,10 +2,10 @@ apiVersion: spark.stackable.tech/v1alpha1
 kind: SparkApplication
 metadata:
   name: pyspark-pi
-  namespace: default
+  namespace: rhods-project
 spec:
   version: "1.0"
-  sparkImage: image-registry.openshift-image-registry.svc:5000/sales-challenge/pyspark:latest
+  sparkImage: image-registry.openshift-image-registry.svc:5000/rhods-project/pyspark:latest
   mode: cluster
   mainApplicationFile: local:///stackable/spark/main_spark.py
   driver:
