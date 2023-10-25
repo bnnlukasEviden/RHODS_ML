@@ -1,8 +1,14 @@
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
+  annotations:
+    openshift.io/display-name: onnxmodel
+    serving.kserve.io/deploymentMode: ModelMesh
   name: onnxmodel
   namespace: rhods-project
+  labels:
+    name: onnxmodel
+    opendatahub.io/dashboard: 'true'
 spec:
   predictor:
     model:
