@@ -50,7 +50,7 @@ SPARK
 spark = SparkSession.builder.appName('RHODS').getOrCreate()
 
 spark.catalog.clearCache()
-spark.conf.set("spark.sql.autoBroadcastJoinThreshold", 1024 * 1024 * 1024)
+spark.conf.set("spark.sql.autoBroadcastJoinThreshold", -1)
 
 '''
 DATA EXTRACTION
