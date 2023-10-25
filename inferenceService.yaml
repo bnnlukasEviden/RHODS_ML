@@ -1,0 +1,15 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: testmodel
+  namespace: rhods-project
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: onnx
+        version: '1'
+      runtime: model-server
+      storage:
+        key: aws-connection-ionos
+        path: test.onnx

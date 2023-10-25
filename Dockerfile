@@ -1,5 +1,5 @@
 FROM docker.stackable.tech/stackable/pyspark-k8s:3.3.0-stackable23.7.0
 
-RUN 'echo $(workspaces.source.path)'
+COPY ./main_spark.py /stackable/spark
 
-COPY /workspaces/source/* /stackable/spark
+RUN pip install boto3 onnxmltools
