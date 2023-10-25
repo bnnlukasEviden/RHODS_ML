@@ -1,5 +1,9 @@
 # Dependencies
 # final script
+
+from io import StringIO
+import pandas as pd
+
 import pyspark
 from pyspark.sql import SparkSession
 from pyspark.ml.feature import VectorAssembler
@@ -23,6 +27,20 @@ from onnxmltools.convert.sparkml.utils import buildInitialTypesSimple
 import boto3
 from botocore.exceptions import NoCredentialsError
 
+ionos_endpoint_url = 'https://sales-challenge.s3-eu-central-1.ionoscloud.com'
+ionos_region = 'de'
+
+ionos_access_key = '00d4804864744cc11eb4'
+ionos_secret_key = 'peqgMLZSwt59HRwg+BgAMxeuwDkkIwkYcTVRSZWq'
+
+s3 = boto3.client('s3',
+    aws_access_key_id=ionos_access_key,
+    aws_secret_access_key=ionos_secret_key,
+    endpoint_url=ionos_endpoint_url,
+    region_name=ionos_region
+)
+
+
 '''
 SPARK
 '''
@@ -36,25 +54,24 @@ spark.conf.set("spark.sql.autoBroadcastJoinThreshold", 1024 * 1024 * 1024)
 DATA EXTRACTION
 '''
 
-# Connection to the PostgreSQL database
-jdbc_url = "jdbc:postgresql://db-central-primary.sales-challenge.svc:5432/central"
-connection_properties = {
-    "user": "central",
-    "password": "gs=@,(9;+zIYZY<k;b*87}na",
-    # "driver": "org.postgresql.Driver"
-}
+bucket_name_csv = 'csv'
 
-# Store the data from the database tables to spark dataframes
-main_df = spark.read.jdbc(url=jdbc_url, table="train", properties=connection_properties)
-oil_df = spark.read.jdbc(url=jdbc_url, table="oil", properties=connection_properties)
-holidays_df = spark.read.jdbc(url=jdbc_url, table="holidays_events", properties=connection_properties)
-transactions_df = spark.read.jdbc(url=jdbc_url, table="transactions", properties=connection_properties)
+file_names = ['train', 'oil', 'holidays_events','transactions']
+Data = {}
 
-print(main_df)
-main_df = spark.read.csv('train.csv', header = True, inferSchema = True)
-oil_df = spark.read.csv('oil.csv', header = True, inferSchema = True)
-holidays_df = spark.read.csv('holidays_events.csv', header = True, inferSchema = True)
-transactions_df = spark.read.csv('transactions.csv', header = True, inferSchema = True)
+for x in file_names:
+    bucket_name = 'csv'
+    object_key = x + '.csv'
+    csv_obj = s3.get_object(Bucket=bucket_name, Key=object_key)
+    body = csv_obj['Body']
+    csv_string = body.read().decode('utf-8')
+    df = spark.createDataFrame(pd.read_csv(StringIO(csv_string)))
+    Data[x] = df
+
+main_df = Data['train']
+oil_df = Data['oil']
+holidays_df = Data['holidays_events']
+transactions_df = Data['transactions']
 
 #-------------------------------------------------------------------------------------------------------------------------------
 
@@ -344,28 +361,14 @@ onnx_model_tl = convert_sparkml(best_model_tl, 'Pyspark model with time lags', i
 with open("onnx_model.onnx", "wb") as onnx_file:
     onnx_file.write(onnx_model_tl.SerializeToString())
 
-ionos_endpoint_url = 'https://sales-challenge.s3-eu-central-1.ionoscloud.com'
-ionos_region = 'eu-central-1'
-
-ionos_access_key = '00d4804864744cc11eb4'
-ionos_secret_key = 'peqgMLZSwt59HRwg+BgAMxeuwDkkIwkYcTVRSZWq'
-
-s3 = boto3.client('s3',
-    aws_access_key_id=ionos_access_key,
-    aws_secret_access_key=ionos_secret_key,
-    endpoint_url=ionos_endpoint_url,
-    region_name=ionos_region
-)
-
-bucket_name = 'models'
-object_key = 'model.onnx'  # You can adjust the path and name as needed.
+bucket_name_model = 'models'
+object_key_model = 'model.onnx'  # You can adjust the path and name as needed.
 
 try:
-    s3.upload_file("./onnx_model.onnx", bucket_name, object_key)
-    print(f"ONNX model uploaded to S3 bucket {bucket_name} with key {object_key}")
+    s3.upload_file("./onnx_model.onnx", bucket_name_model, object_key_model)
+    print(f"ONNX model uploaded to S3 bucket {bucket_name_model} with key {object_key_model}")
 except NoCredentialsError:
     print("AWS credentials not available.")
-
 
 #-------------------------------------------------------------------------------------------------------------------------------
 
