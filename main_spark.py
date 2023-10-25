@@ -27,6 +27,8 @@ from onnxmltools.convert.sparkml.utils import buildInitialTypesSimple
 import boto3
 from botocore.exceptions import NoCredentialsError
 
+pd.DataFrame.iteritems = pd.DataFrame.items
+
 ionos_endpoint_url = 'https://sales-challenge.s3-eu-central-1.ionoscloud.com'
 ionos_region = 'de'
 
