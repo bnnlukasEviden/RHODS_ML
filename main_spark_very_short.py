@@ -2,6 +2,14 @@ from io import StringIO
 import pandas as pd
 import io
 
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,  # Set the log level as needed
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
 import pyspark
 from pyspark.sql import SparkSession
 from pyspark.ml.feature import VectorAssembler
@@ -84,6 +92,8 @@ cvModel = crossval.fit(train_data)
 best_model = cvModel.bestModel
 
 initial_types = buildInitialTypesSimple(test_data.drop("sales"))
+
+logging.info(f"The value of my_variable is: {initial_types}")
 onnx_model = convert_sparkml(best_model, 'Pyspark model without time lags', initial_types, spark_session = spark)
 
 
