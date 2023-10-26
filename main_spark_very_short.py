@@ -91,7 +91,7 @@ onnx_model = convert_sparkml(best_model, 'Pyspark model without time lags')
 onnx_bytes = onnx_model.SerializeToString()
 
 bucket_name_model = 'models'
-object_key_model = 'model_test_pipeline.onnx'
+object_key_model = 'model_test_pipeline3.onnx'
 
 try:
     s3.put_object(Bucket = bucket_name_model, Key = object_key_model, Body = onnx_bytes)
