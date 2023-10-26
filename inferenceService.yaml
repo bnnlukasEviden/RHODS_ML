@@ -18,4 +18,4 @@ spec:
       runtime: model-server
       storage:
         key: aws-connection-ionos
-        path: models/model.onnx
+        path: models/onnx_model_inference.onnx
