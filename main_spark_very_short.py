@@ -89,13 +89,12 @@ crossval = CrossValidator(estimator=pipeline,
 train_data, test_data = main_df_cut.randomSplit([0.8, 0.2], seed=12)
 cvModel = crossval.fit(train_data)
 
-best_model = cvModel.bestModel
+#best_model = cvModel.bestModel
 
 initial_types = buildInitialTypesSimple(test_data.drop("sales"))
 
-ml_model = best_model.stages[-1]
 logging.info(f"The value of my_variable is: {type(best_model)}")
-onnx_model = convert_sparkml(ml_model, 'Pyspark model without time lags', initial_types, spark_session = spark)
+onnx_model = convert_sparkml(cvModel, 'Pyspark model without time lags', initial_types, spark_session = spark)
 
 
 onnx_bytes = onnx_model.SerializeToString()
