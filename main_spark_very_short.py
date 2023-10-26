@@ -84,7 +84,9 @@ cvModel = crossval.fit(train_data)
 best_model = cvModel.bestModel
 
 initial_types = buildInitialTypesSimple(test_data.drop("sales"))
-onnx_model = convert_sparkml(best_model, 'Pyspark model without time lags', initial_types, spark_session = spark)
+#onnx_model = convert_sparkml(best_model, 'Pyspark model without time lags', initial_types, spark_session = spark)
+onnx_model = convert_sparkml(best_model, 'Pyspark model without time lags')
+
 
 onnx_bytes = onnx_model.SerializeToString()
 
