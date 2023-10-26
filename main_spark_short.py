@@ -75,7 +75,6 @@ oil_df = Data['oil']
 holidays_df = Data['holidays_events']
 transactions_df = Data['transactions']
 
-print('data loaded')
 #-------------------------------------------------------------------------------------------------------------------------------
 
 '''
@@ -180,8 +179,6 @@ oil_new_df = oil_fc_train.select('date', 'dcoilwtico').union(oil_predictions.sel
 # Now the new_oil_df gets merged with the agg_df to do further preprocessing
 agg_oilprice_merged_df = agg_df.join(oil_new_df, on='date', how='left')
 
-
-
 # ## Transactions_df Merge
 # In this section we merge the aggregations_df with the agg_df to use the number of transaction per day for furter predictions
 
@@ -211,86 +208,90 @@ print('oil forecasting done')
 SALES FORECASTING
 '''
 
-
 '''
-FEATURE-BASED (without time lags)
+FEATURE-BASED WITH TIME LAG
 '''
-# In the first trained model for predicting the sales volumes we use a normal feature based prediction without taking into account previous values.
 
-# ## Data transformation/encoding
-transformed_df_fb = merged_df
+tl_df = merged_df # creating plain df for time-lagged data frame
 
-transformed_df_fb = transformed_df_fb.drop("date")
+window_spec = Window.partitionBy("family").orderBy("date")
 
-transformed_df_fb = transformed_df_fb.withColumnRenamed("day_of_week", "day_of_week_index")
-transformed_df_fb = transformed_df_fb.withColumnRenamed("month", "month_index")
-transformed_df_fb = transformed_df_fb.sample(withReplacement=False, fraction=0.05)
+# adding lags 
+tl_df = tl_df.withColumn("lag_1", F.lag("sales", 1).over(window_spec))
+tl_df = tl_df.withColumn("lag_2", F.lag("sales", 2).over(window_spec))
+tl_df = tl_df.withColumn("lag_3", F.lag("sales", 3).over(window_spec))
 
-str_cat_cols_fb = ["type", "family"]
-cat_cols_fb = ["day_of_week", "month", "type", "family"]
 
-indexers_fb = [StringIndexer(inputCol=col, outputCol=col+"_index") for col in str_cat_cols_fb]
-encoders_fb = [OneHotEncoder(inputCol=col + "_index", outputCol=col + "_encoded") for col in cat_cols_fb]
+specific_date = "2013-01-04" # The Time lag dataframe should start from the "2013-01-04" because else there is no lag data for the first row
+specific_date = spark.createDataFrame([(specific_date,)], ["specific_date"]).withColumn("specific_date", col("specific_date").cast(DateType()))
+tl_df_filtered = tl_df.filter(col("date") >= specific_date.select("specific_date").collect()[0][0])
 
-for encoder in encoders_fb:
+
+# Data transformation/encoding
+
+transformed_df_tl = tl_df_filtered
+
+transformed_df_tl = transformed_df_tl.withColumnRenamed("day_of_week", "day_of_week_index")
+transformed_df_tl = transformed_df_tl.withColumnRenamed("month", "month_index")
+
+str_cat_cols_tl = ["type", "family"]
+cat_cols_tl = ["day_of_week", "month", "type", "family"]
+
+indexers_tl = [StringIndexer(inputCol=col, outputCol=col+"_index") for col in str_cat_cols_tl]
+encoders_tl = [OneHotEncoder(inputCol=col + "_index", outputCol=col + "_encoded") for col in cat_cols_tl]
+
+for encoder in encoders_tl:
     encoder.setHandleInvalid("keep")
     encoder.setDropLast(True)
 
-feature_cols_fb = ["day_of_week_encoded", "month_encoded", "type_encoded", "family_encoded", "transactions", "dcoilwtico", "onpromotion"]
-
 ##### MODEL TRAINING #####
 
-assembler_fb = VectorAssembler(inputCols=feature_cols_fb, outputCol="features")
+feature_cols_tl = ["day_of_week_encoded", "month_encoded", "type_encoded", "family_encoded", "transactions", "dcoilwtico", "onpromotion", "lag_1", "lag_2", "lag_3"]
 
-gbt_fb = GBTRegressor(featuresCol="features", labelCol="sales", maxBins=33)
+assembler_tl = VectorAssembler(inputCols=feature_cols_tl, outputCol="features")
 
-pipeline_fb = Pipeline(stages= indexers_fb + encoders_fb + [assembler_fb, gbt_fb])
+gbt_tl = GBTRegressor(featuresCol="features", labelCol="sales", maxBins=33)
 
-# Hyperparameter Tuning
-paramGrid_fb = (ParamGridBuilder()
-             .addGrid(gbt_fb.maxDepth, [4, 6])
-             .addGrid(gbt_fb.maxIter, [50, 100])
-             .addGrid(gbt_fb.stepSize, [0.1, 0.01])
+pipeline_tl = Pipeline(stages= indexers_tl + encoders_tl + [assembler_tl, gbt_tl])
+
+paramGrid_tl = (ParamGridBuilder()
+             .addGrid(gbt_tl.maxDepth, [4, 6])
+             .addGrid(gbt_tl.maxIter, [50, 100])
+             .addGrid(gbt_tl.stepSize, [0.1, 0.01])
              .build())
 
-evaluator_fb = RegressionEvaluator(labelCol="sales", predictionCol="prediction", metricName="mae")
+evaluator_tl = RegressionEvaluator(labelCol="sales", predictionCol="prediction", metricName="mae")
 
-crossval_fb = CrossValidator(estimator=pipeline_fb,
-                          estimatorParamMaps=paramGrid_fb,
-                          evaluator=evaluator_fb,
+crossval_tl = CrossValidator(estimator=pipeline_tl,
+                          estimatorParamMaps=paramGrid_tl,
+                          evaluator=evaluator_tl,
                           numFolds=2)
 
-train_data_fb, test_data_fb = transformed_df_fb.randomSplit([0.8, 0.2], seed=12)
-cvModel_fb = crossval_fb.fit(train_data_fb)
+train_data_tl, test_data_tl = transformed_df_tl.randomSplit([0.8, 0.2], seed=12)
+cvModel_tl = crossval_tl.fit(train_data_tl)
 
 '''
-MODEL EVALUATION 
-without time lags
+EVALUATION / MODEL EXPORT
+time-lagged model
 '''
 
-#  Overall evaluation
+# evaluation_tl_df = cvModel_tl.transform(test_data_tl)
+# clipped_evaluation_tl_df = evaluation_tl_df.withColumn("clipped_predictions", when(col("prediction") < 0, 0).otherwise(col("prediction")))
 
+# mae_tl = evaluator_tl.evaluate(evaluation_tl_df)
 
-evaluation_fb_df = cvModel_fb.transform(test_data_fb)
-clipped_evaluation_fb_df = evaluation_fb_df.withColumn("clipped_predictions", when(col("prediction") < 0, 0).otherwise(col("prediction")))
+best_model_tl = cvModel_tl.bestModel
 
-mae_fb = evaluator_fb.evaluate(clipped_evaluation_fb_df)
+initial_types = buildInitialTypesSimple(test_data_tl.drop("sales"))
+onnx_model = convert_sparkml(best_model_tl, 'Pyspark model without time lags', initial_types, spark_session = spark)
 
-
-best_model_fb = cvModel_fb.bestModel
-
-
-initial_types_fb = buildInitialTypesSimple(test_data_fb.drop("sales", 'date'))
-onnx_model_fb = convert_sparkml(best_model_fb, 'Pyspark model with time lags', initial_types_tl, spark_session = spark)
-
-with open("onnx_model.onnx", "wb") as onnx_file:
-    onnx_file.write(onnx_model_fb.SerializeToString())
+onnx_bytes = onnx_model.SerializeToString()
 
 bucket_name_model = 'models'
-object_key_model = 'model.onnx'  # You can adjust the path and name as needed.
+object_key_model = 'model_test_pipeline.onnx'
 
 try:
-    s3.upload_file("./onnx_model.onnx", bucket_name_model, object_key_model)
+    s3.put_object(Bucket = bucket_name_model, Key = object_key_model, Body = onnx_bytes)
     print(f"ONNX model uploaded to S3 bucket {bucket_name_model} with key {object_key_model}")
 except NoCredentialsError:
     print("AWS credentials not available.")

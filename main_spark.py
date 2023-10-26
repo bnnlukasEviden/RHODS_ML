@@ -75,7 +75,6 @@ oil_df = Data['oil']
 holidays_df = Data['holidays_events']
 transactions_df = Data['transactions']
 
-print('data loaded')
 #-------------------------------------------------------------------------------------------------------------------------------
 
 '''
@@ -97,8 +96,6 @@ agg_df = agg_df.withColumn('day_of_week', dayofweek(agg_df.date)).withColumn('mo
 # Aggregating the oil_df and the agg_df
 agg_oil_merge_df = agg_df.join(oil_df, on='date', how='left') # left join agg_df and oil_df
 agg_oil_merge_df = agg_oil_merge_df.dropDuplicates(['date']) # reduce df to one row per date
-
-
 
 
 # --> Due to the high number of NaN-Values regarding the oilprice-value we decided to do a oilprice forecast
@@ -204,7 +201,6 @@ merged_df = merged_df.join(modified_holidays_df, on="date", how="left")
 # The dates on which no holiday or something else encounted in the holiday_df takes place we insert "Normal" as a value
 merged_df = merged_df.withColumn("type", when(merged_df["type"].isNull(), "Normal").otherwise(merged_df["type"]))
 
-print('oil forecasting done')
 #-------------------------------------------------------------------------------------------------------------------------------
 
 '''
@@ -268,19 +264,13 @@ MODEL EVALUATION
 without time lags
 '''
 
-#  Overall evaluation
+# evaluation_fb_df = cvModel_fb.transform(test_data_fb)
+# clipped_evaluation_fb_df = evaluation_fb_df.withColumn("clipped_predictions", when(col("prediction") < 0, 0).otherwise(col("prediction")))
 
+# mae_fb = evaluator_fb.evaluate(clipped_evaluation_fb_df)
 
-evaluation_fb_df = cvModel_fb.transform(test_data_fb)
-clipped_evaluation_fb_df = evaluation_fb_df.withColumn("clipped_predictions", when(col("prediction") < 0, 0).otherwise(col("prediction")))
+# best_model_fb = cvModel_fb.bestModel
 
-mae_fb = evaluator_fb.evaluate(clipped_evaluation_fb_df)
-
-
-best_model_fb = cvModel_fb.bestModel
-
-initial_types_fb = buildInitialTypesSimple(test_data_fb.drop("sales"))
-onnx_model_fb = convert_sparkml(best_model_fb, 'Pyspark model without time lags', initial_types_fb, spark_session = spark)
 #-------------------------------------------------------------------------------------------------------------------------------
 
 '''
@@ -347,28 +337,27 @@ cvModel_tl = crossval_tl.fit(train_data_tl)
 
 
 '''
-EVALUATION
+EVALUATION / MODEL EXPORT
 time-lagged model
 '''
 
-evaluation_tl_df = cvModel_tl.transform(test_data_tl)
-clipped_evaluation_tl_df = evaluation_tl_df.withColumn("clipped_predictions", when(col("prediction") < 0, 0).otherwise(col("prediction")))
+# evaluation_tl_df = cvModel_tl.transform(test_data_tl)
+# clipped_evaluation_tl_df = evaluation_tl_df.withColumn("clipped_predictions", when(col("prediction") < 0, 0).otherwise(col("prediction")))
 
-mae_tl = evaluator_tl.evaluate(evaluation_tl_df)
+# mae_tl = evaluator_tl.evaluate(evaluation_tl_df)
 
 best_model_tl = cvModel_tl.bestModel
 
-initial_types_tl = buildInitialTypesSimple(test_data_tl.drop("sales", 'date'))
-onnx_model_tl = convert_sparkml(best_model_tl, 'Pyspark model with time lags', initial_types_tl, spark_session = spark)
+initial_types = buildInitialTypesSimple(test_data_tl.drop("sales"))
+onnx_model = convert_sparkml(best_model_tl, 'Pyspark model without time lags', initial_types, spark_session = spark)
 
-with open("onnx_model.onnx", "wb") as onnx_file:
-    onnx_file.write(onnx_model_tl.SerializeToString())
+onnx_bytes = onnx_model.SerializeToString()
 
 bucket_name_model = 'models'
-object_key_model = 'model.onnx'  # You can adjust the path and name as needed.
+object_key_model = 'model_test_pipeline.onnx'
 
 try:
-    s3.upload_file("./onnx_model.onnx", bucket_name_model, object_key_model)
+    s3.put_object(Bucket = bucket_name_model, Key = object_key_model, Body = onnx_bytes)
     print(f"ONNX model uploaded to S3 bucket {bucket_name_model} with key {object_key_model}")
 except NoCredentialsError:
     print("AWS credentials not available.")
