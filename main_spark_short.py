@@ -97,9 +97,6 @@ agg_df = agg_df.withColumn('day_of_week', dayofweek(agg_df.date)).withColumn('mo
 agg_oil_merge_df = agg_df.join(oil_df, on='date', how='left') # left join agg_df and oil_df
 agg_oil_merge_df = agg_oil_merge_df.dropDuplicates(['date']) # reduce df to one row per date
 
-
-
-
 # --> Due to the high number of NaN-Values regarding the oilprice-value we decided to do a oilprice forecast
 #-------------------------------------------------------------------------------------------------------------------------------
 
