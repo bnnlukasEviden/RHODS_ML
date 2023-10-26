@@ -93,7 +93,7 @@ best_model = cvModel.bestModel
 
 initial_types = buildInitialTypesSimple(test_data.drop("sales"))
 
-logging.info(f"The value of my_variable is: {initial_types}")
+logging.info(f"The value of my_variable is: {type(best_model)}")
 onnx_model = convert_sparkml(best_model, 'Pyspark model without time lags', initial_types, spark_session = spark)
 
 
