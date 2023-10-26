@@ -130,7 +130,7 @@ oil_forecast_encoded_df = encoder_oil.fit(oil_forecast_df).transform(oil_forecas
 
 
 # Create the train set of data with oil prices
-oil_fc_train = oil_forecast_encoded_df.filter(oil_forecast_encoded_df['dcoilwtico'].isNotNull())
+oil_fc_train = oil_forecast_encoded_df.na.drop(subset=["dcoilwtico"])
 # Create the prediction set of data without oil prices
 oil_fc_pred = oil_forecast_encoded_df.filter(oil_forecast_encoded_df['dcoilwtico'].isNull())
 
