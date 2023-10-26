@@ -97,9 +97,6 @@ agg_df = agg_df.withColumn('day_of_week', dayofweek(agg_df.date)).withColumn('mo
 agg_oil_merge_df = agg_df.join(oil_df, on='date', how='left') # left join agg_df and oil_df
 agg_oil_merge_df = agg_oil_merge_df.dropDuplicates(['date']) # reduce df to one row per date
 
-
-
-
 # --> Due to the high number of NaN-Values regarding the oilprice-value we decided to do a oilprice forecast
 #-------------------------------------------------------------------------------------------------------------------------------
 
@@ -268,6 +265,10 @@ crossval_tl = CrossValidator(estimator=pipeline_tl,
                           numFolds=2)
 
 train_data_tl, test_data_tl = transformed_df_tl.randomSplit([0.8, 0.2], seed=12)
+
+train_data_tl = train_data_tl.where(col("sales").isNotNull()).where(col("lag_1").isNotNull()).where(col("lag_2").isNotNull()).where(col("lag_3").isNotNull()).where(col("type").isNotNull()).where(col("transactions").isNotNull()).where(col("month_index").isNotNull()).where(col("day_of_week_index").isNotNull()).where(col("family").isNotNull()).where(col("onpromotion").isNotNull()).where(col("dcoilwtico").isNotNull()).where(col("date").isNotNull())
+test_data_tl = test_data_tl.where(col("sales").isNotNull()).where(col("lag_1").isNotNull()).where(col("lag_2").isNotNull()).where(col("lag_3").isNotNull()).where(col("type").isNotNull()).where(col("transactions").isNotNull()).where(col("month_index").isNotNull()).where(col("day_of_week_index").isNotNull()).where(col("family").isNotNull()).where(col("onpromotion").isNotNull()).where(col("dcoilwtico").isNotNull()).where(col("date").isNotNull())
+
 cvModel_tl = crossval_tl.fit(train_data_tl)
 
 '''

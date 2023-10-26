@@ -2,6 +2,14 @@ from io import StringIO
 import pandas as pd
 import io
 
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,  # Set the log level as needed
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
 import pyspark
 from pyspark.sql import SparkSession
 from pyspark.ml.feature import VectorAssembler
@@ -83,18 +91,23 @@ cvModel = crossval.fit(train_data)
 
 best_model = cvModel.bestModel
 
-initial_types = buildInitialTypesSimple(test_data.drop("sales"))
-onnx_model = convert_sparkml(best_model, 'Pyspark model without time lags', initial_types, spark_session = spark)
+# predictions = best_model.transform(test_data)
 
-onnx_bytes = onnx_model.SerializeToString()
+# initial_types = buildInitialTypesSimple(test_data.drop("sales"))
 
-bucket_name_model = 'models'
-object_key_model = 'model_test_pipeline.onnx'
+# logging.info(f"The value of my_variable is: {predictions}")
+# onnx_model = convert_sparkml(best_model, 'Pyspark model without time lags', initial_types, spark_session = spark)
 
-try:
-    s3.put_object(Bucket = bucket_name_model, Key = object_key_model, Body = onnx_bytes)
-    print(f"ONNX model uploaded to S3 bucket {bucket_name_model} with key {object_key_model}")
-except NoCredentialsError:
-    print("AWS credentials not available.")
+
+# onnx_bytes = onnx_model.SerializeToString()
+
+# bucket_name_model = 'models'
+# object_key_model = 'model_test_pipeline3.onnx'
+
+# try:
+#     s3.put_object(Bucket = bucket_name_model, Key = object_key_model, Body = onnx_bytes)
+#     print(f"ONNX model uploaded to S3 bucket {bucket_name_model} with key {object_key_model}")
+# except NoCredentialsError:
+#     print("AWS credentials not available.")
 
 spark.stop()
