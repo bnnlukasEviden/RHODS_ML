@@ -91,23 +91,23 @@ cvModel = crossval.fit(train_data)
 
 best_model = cvModel.bestModel
 
-predictions = best_model.transform(test_data)
+# predictions = best_model.transform(test_data)
 
-initial_types = buildInitialTypesSimple(test_data.drop("sales"))
+# initial_types = buildInitialTypesSimple(test_data.drop("sales"))
 
-logging.info(f"The value of my_variable is: {predictions}")
-onnx_model = convert_sparkml(best_model, 'Pyspark model without time lags', initial_types, spark_session = spark)
+# logging.info(f"The value of my_variable is: {predictions}")
+# onnx_model = convert_sparkml(best_model, 'Pyspark model without time lags', initial_types, spark_session = spark)
 
 
-onnx_bytes = onnx_model.SerializeToString()
+# onnx_bytes = onnx_model.SerializeToString()
 
-bucket_name_model = 'models'
-object_key_model = 'model_test_pipeline3.onnx'
+# bucket_name_model = 'models'
+# object_key_model = 'model_test_pipeline3.onnx'
 
-try:
-    s3.put_object(Bucket = bucket_name_model, Key = object_key_model, Body = onnx_bytes)
-    print(f"ONNX model uploaded to S3 bucket {bucket_name_model} with key {object_key_model}")
-except NoCredentialsError:
-    print("AWS credentials not available.")
+# try:
+#     s3.put_object(Bucket = bucket_name_model, Key = object_key_model, Body = onnx_bytes)
+#     print(f"ONNX model uploaded to S3 bucket {bucket_name_model} with key {object_key_model}")
+# except NoCredentialsError:
+#     print("AWS credentials not available.")
 
 spark.stop()
