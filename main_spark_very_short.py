@@ -91,9 +91,11 @@ cvModel = crossval.fit(train_data)
 
 best_model = cvModel.bestModel
 
+predictions = best_model.transform(test_data)
+
 initial_types = buildInitialTypesSimple(test_data.drop("sales"))
 
-logging.info(f"The value of my_variable is: {type(best_model)}")
+logging.info(f"The value of my_variable is: {predictions}")
 onnx_model = convert_sparkml(best_model, 'Pyspark model without time lags', initial_types, spark_session = spark)
 
 
