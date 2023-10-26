@@ -7,7 +7,7 @@ spec:
   version: "1.0"
   sparkImage: image-registry.openshift-image-registry.svc:5000/sales-challenge/pyspark:latest
   mode: cluster
-  mainApplicationFile: local:///stackable/spark/main_spark3.py
+  mainApplicationFile: local:///stackable/spark/main_spark_very_short.py
   driver:
     resources:
       cpu:
