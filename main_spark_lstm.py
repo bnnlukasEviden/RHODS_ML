@@ -99,7 +99,8 @@ object_key_model = 'lstm_model.xml'
 
 try:
     s3.upload_file('./model.xml', bucket_name_model, object_key_model)
-    print(f"ONNX model uploaded to S3 bucket {bucket_name_model} with key {object_key_model}")
+    s3.upload_file('./model.bin', bucket_name_model, object_key_model)
+    print(f"LSTM model uploaded to S3 bucket {bucket_name_model} with key {object_key_model}")
 except NoCredentialsError:
     print("AWS credentials not available.")
 
