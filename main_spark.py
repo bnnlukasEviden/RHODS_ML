@@ -24,6 +24,14 @@ from pyspark.sql.types import DateType
 from onnxmltools import convert_sparkml
 from onnxmltools.convert.sparkml.utils import buildInitialTypesSimple
 
+import tensorflow as tf
+from tensorflow import keras
+
+import numpy as np
+from sklearn.model_selection import train_test_split
+
+import openvino as ov
+
 import boto3
 from botocore.exceptions import NoCredentialsError
 
@@ -259,17 +267,7 @@ crossval_fb = CrossValidator(estimator=pipeline_fb,
 train_data_fb, test_data_fb = transformed_df_fb.randomSplit([0.8, 0.2], seed=12)
 cvModel_fb = crossval_fb.fit(train_data_fb)
 
-'''
-MODEL EVALUATION 
-without time lags
-'''
-
-# evaluation_fb_df = cvModel_fb.transform(test_data_fb)
-# clipped_evaluation_fb_df = evaluation_fb_df.withColumn("clipped_predictions", when(col("prediction") < 0, 0).otherwise(col("prediction")))
-
-# mae_fb = evaluator_fb.evaluate(clipped_evaluation_fb_df)
-
-# best_model_fb = cvModel_fb.bestModel
+best_model_fb = cvModel_fb.bestModel
 
 #-------------------------------------------------------------------------------------------------------------------------------
 
@@ -335,30 +333,56 @@ crossval_tl = CrossValidator(estimator=pipeline_tl,
 train_data_tl, test_data_tl = transformed_df_tl.randomSplit([0.8, 0.2], seed=12)
 cvModel_tl = crossval_tl.fit(train_data_tl)
 
-
-'''
-EVALUATION / MODEL EXPORT
-time-lagged model
-'''
-
-# evaluation_tl_df = cvModel_tl.transform(test_data_tl)
-# clipped_evaluation_tl_df = evaluation_tl_df.withColumn("clipped_predictions", when(col("prediction") < 0, 0).otherwise(col("prediction")))
-
-# mae_tl = evaluator_tl.evaluate(evaluation_tl_df)
-
 best_model_tl = cvModel_tl.bestModel
 
-initial_types = buildInitialTypesSimple(test_data_tl.drop("sales"))
-onnx_model = convert_sparkml(best_model_tl, 'Pyspark model without time lags', initial_types, spark_session = spark)
+#-------------------------------------------------------------------------------------------------------------------------------
 
-onnx_bytes = onnx_model.SerializeToString()
+agg_df = agg_df.sort(col("date"), col("family"))
+
+agg_df_pd = agg_df.toPandas()
+
+grouped = agg_df_pd.groupby('family')
+family_dataframes = {name: group for name, group in grouped}
+
+automotive_df = family_dataframes['AUTOMOTIVE']
+modified_automotive_df = automotive_df[['date', 'sales']]
+
+window_size = 10
+
+X, y = [], []
+for i in range(len(modified_automotive_df) - window_size):
+    try:
+        X.append(modified_automotive_df['sales'].iloc[i:i+window_size].values)
+        y.append(modified_automotive_df['sales'].iloc[i+window_size])
+    except:
+        if len(X) != len(y):
+            X.pop()
+        break
+X = np.array(X)
+y = np.array(y)
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+
+model = keras.Sequential()
+model.add(keras.layers.LSTM(50, activation='relu', input_shape=(window_size, 1)))
+model.add(keras.layers.Dense(1))
+
+model.compile(optimizer='adam', loss='mean_absolute_error')
+
+model.fit(X_train, y_train, epochs=1, batch_size=16)
+
+tf.saved_model.save(model,'model')
+ov_model = ov.convert_model('./model')
+ov.save_model(ov_model, 'model.xml')
 
 bucket_name_model = 'models'
-object_key_model = 'model_test_pipeline.onnx'
+object_key_model_xml = 'lstm_model.xml'
+object_key_model_bin = 'lstm_model.bin'
 
 try:
-    s3.put_object(Bucket = bucket_name_model, Key = object_key_model, Body = onnx_bytes)
-    print(f"ONNX model uploaded to S3 bucket {bucket_name_model} with key {object_key_model}")
+    s3.upload_file('./model.xml', bucket_name_model, object_key_model_xml)
+    s3.upload_file('./model.bin', bucket_name_model, object_key_model_bin)
+    print(f"LSTM model uploaded to S3 bucket {bucket_name_model} with key {object_key_model_xml}")
 except NoCredentialsError:
     print("AWS credentials not available.")
 
