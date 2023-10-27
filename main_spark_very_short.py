@@ -27,8 +27,12 @@ from pyspark.sql.functions import expr
 from pyspark.sql import Row
 from pyspark.sql.types import DateType
 
-from onnxmltools import convert_sparkml
-from onnxmltools.convert.sparkml.utils import buildInitialTypesSimple
+# from onnxmltools import convert_sparkml
+# from onnxmltools.convert.sparkml.utils import buildInitialTypesSimple
+
+import onnxmltools
+from skl2onnx import convert
+from mleap.pyspark.spark_support import SimpleSparkSerializer
 
 import boto3
 from botocore.exceptions import NoCredentialsError
@@ -91,11 +95,14 @@ cvModel = crossval.fit(train_data)
 
 best_model = cvModel.bestModel
 
-# predictions = best_model.transform(test_data)
+model_bytes = SimpleSparkSerializer().serializeToBundle(best_model)
+
+model = mleap.sklearn.base.PipelineModel.from_bundle_bytes(model_bytes)
+
+onnx_model = convert.from_mleap(model)
 
 # initial_types = buildInitialTypesSimple(test_data.drop("sales"))
 
-# logging.info(f"The value of my_variable is: {predictions}")
 # onnx_model = convert_sparkml(best_model, 'Pyspark model without time lags', initial_types, spark_session = spark)
 
 
