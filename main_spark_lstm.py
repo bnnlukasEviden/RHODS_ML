@@ -54,12 +54,8 @@ body = csv_obj['Body']
 csv_string = body.read().decode('utf-8')
 main_df = spark.createDataFrame(pd.read_csv(StringIO(csv_string)))
 
-# Aggregation of the main_df to get the sales volumes aggregatet over all stores for each product family and date
 agg_df = main_df.groupBy('date', 'family').agg(sum('sales').alias("sales"), sum('onpromotion').alias("onpromotion"))
-
-# Adding of features related to the day of the week and the month of each record based on the date
-agg_df = agg_df.withColumn('day_of_week', dayofweek(agg_df.date)).withColumn('month', month(agg_df.date))
-agg_df.sort(col("date"), col("family")).show(truncate = False)
+agg_df = agg_df.sort(col("date"), col("family"))
 
 agg_df_pd = agg_df.toPandas()
 
