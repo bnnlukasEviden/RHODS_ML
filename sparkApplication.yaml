@@ -1,7 +1,7 @@
 apiVersion: spark.stackable.tech/v1alpha1
 kind: SparkApplication
 metadata:
-  name: pyspark-small
+  name: pyspark-lstm
   namespace: sales-challenge
 spec:
   version: "1.0"
