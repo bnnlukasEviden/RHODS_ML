@@ -2,18 +2,18 @@ apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
   annotations:
-    openshift.io/display-name: onnxmodel
+    openshift.io/display-name: tf-model-lstm
     serving.kserve.io/deploymentMode: ModelMesh
-  name: onnxmodel
+  name: tf-model-lstm
   namespace: rhods-project
   labels:
-    name: onnxmodel
+    name: tf-model-lstm
     opendatahub.io/dashboard: 'true'
 spec:
   predictor:
     model:
       modelFormat:
-        name: onnx
+        name: tensorflow
         version: '1'
       runtime: model-server
       storage:
