@@ -91,7 +91,6 @@ model.fit(X_train, y_train, epochs=1, batch_size=16)
 
 tf.saved_model.save(model,'model')
 ov_model = ov.convert_model('./model')
-
 ov.save_model(ov_model, 'model.xml')
 
 bucket_name_model = 'models'
