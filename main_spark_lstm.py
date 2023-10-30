@@ -87,7 +87,7 @@ model.add(keras.layers.Dense(1))
 
 model.compile(optimizer='adam', loss='mean_absolute_error')
 
-model.fit(X_train, y_train, epochs=1, batch_size=16)
+model.fit(X_train, y_train, epochs=25, batch_size=16)
 
 tf.saved_model.save(model,'model')
 ov_model = ov.convert_model('./model')
